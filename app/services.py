@@ -281,7 +281,25 @@ class GenerateLeadsService:
         except Exception as e:
             raise ValueError(f"Error fetching missing website data: {e}")
         
-        
+    
+    def rank_items_by_completeness(self, data):
+        def completeness_score(item):
+            score = 0
+            if item.get('phones_from_website'):
+                score += 1
+            if item.get('emails_from_website'):
+                score += 1
+            if item.get('facebook'):
+                score += 1
+            if item.get('instagram'):
+                score += 1
+            if item.get('linkedin'):
+                score += 1
+            return score
+
+        # Sort by completeness score in descending order
+        data.sort(key=completeness_score, reverse=True)
+
     async def run(self) -> str:
         try:
             existing_results = await self.check_for_existing_results()
@@ -362,14 +380,11 @@ class GenerateLeadsService:
                     filtered_data.extend(existing_results[:self.min_results])
 
             file_path = f"leads{self.location}.csv"
-            self.generate_csv(filtered_data, file_path)
+            tobewritten = self.rank_items_by_completeness(filtered_data)[:self.min_results]
+            self.generate_csv(tobewritten, file_path)
             return file_path
         except Exception as e:
             traceback.print_exc()
-    
-# if __name__ == "__main__":
-#     service = GenerateLeadsService("New York", "restaurants", 50)
-#     print(service.get_address_from_latlng(40.7128, -74.0060))
 
 if __name__ == "__main__":
     lead = GenerateLeadsService(None, None, None)
