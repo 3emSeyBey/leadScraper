@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lead Generation</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container {
+            margin-top: 50px;
+        }
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .dropdown-menu {
+            width: 100%;
+            display: none;
+            position: absolute;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center">Lead Generation</h1>
+        <form id="leadForm">
+            <div class="form-group position-relative">
+                <label for="location">Location</label>
+                <input type="text" class="form-control" id="location" autocomplete="off">
+                <div class="dropdown-menu" id="locationDropdown"></div>
+            </div>
+            <div class="form-group">
+                <label for="industry">Industry</label>
+                <input type="text" class="form-control" id="industry" required>
+            </div>
+            <div class="form-group">
+                <label for="minResults">Minimum Results</label>
+                <input type="number" class="form-control" id="minResults" value="50" required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Generate Leads</button>
+        </form>
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin fa-3x"></i>
+            <p>Generating leads, please wait...</p>
+        </div>
+    </div>
+
+    <script>
+        let selectedLocationName = '';
+
+        document.getElementById('location').addEventListener('input', async function(event) {
+            const query = event.target.value;
+            if (query.length < 3) {
+                document.getElementById('locationDropdown').style.display = 'none';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/proxy-locations/?q=${query}`);
+                const data = await response.json();
+
+                const dropdown = document.getElementById('locationDropdown');
+                dropdown.innerHTML = '';
+                data.forEach(location => {
+                    const item = document.createElement('a');
+                    item.className = 'dropdown-item';
+                    item.href = '#';
+                    item.textContent = location.canonical_name;
+                    item.addEventListener('click', function() {
+                        document.getElementById('location').value = location.canonical_name;
+                        selectedLocationName = location.name;
+                        dropdown.style.display = 'none';
+                    });
+                    dropdown.appendChild(item);
+                });
+                dropdown.style.display = 'block';
+            } catch (error) {
+                console.error('Error fetching locations:', error);
+            }
+        });
+
+        document.getElementById('leadForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const location = document.getElementById('location').value;
+            const industry = document.getElementById('industry').value;
+            const minResults = document.getElementById('minResults').value;
+
+            const loadingSpinner = document.querySelector('.loading-spinner');
+            loadingSpinner.style.display = 'block';
+
+            try {
+                const response = await fetch('/generate-leads/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ location: selectedLocationName, industry, min_results: parseInt(minResults) })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = 'leads.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                } else {
+                    alert('Failed to generate leads. Please try again.');
+                }
+            } catch (error) {
+                alert('An error occurred. Please try again.');
+            } finally {
+                loadingSpinner.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
