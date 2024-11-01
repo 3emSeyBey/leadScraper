@@ -10,6 +10,7 @@ import os
 import aiomysql
 from datetime import datetime
 import config
+from urllib.parse import urlparse, parse_qs
 from scraper import Scraper
 import logging
 
@@ -97,7 +98,7 @@ class GenerateLeadsService:
             return city, state, country
         return None, None, None
 
-    def filter_data(self, data) -> List[Dict]:
+    async def filter_data(self, data) -> List[Dict]:
         filtered_data = []
         seen_place_ids = set()
 
@@ -107,7 +108,7 @@ class GenerateLeadsService:
                 if place_id and place_id not in seen_place_ids:
                     website = item.get('links', {}).get('website', '')
                     if website == '' or website == None:
-                        website = self.get_missing_website_data(item.get('place_id_search'))
+                        website = await self.get_missing_website_data(item.get('place_id_search'))
                     seen_place_ids.add(place_id)
                     place_id = item.get('place_id', '')
                     name = item.get('title', '')
@@ -271,16 +272,24 @@ class GenerateLeadsService:
         return phone_number
 
     async def get_missing_website_data(self, serp_url: str) -> Dict:
+        ludo_cid = serp_url.split('ludocid=')[1].split('&')[0]
+        params = {
+            "api_key": config.SERP_API_KEY,
+            "engine": "google_local",
+            "type": "search",
+            "google_domain": "google.com",
+            "q": f"{self.industry}",
+            "hl": "en",
+            "location": f"{self.location}",
+            "ludocid": ludo_cid
+        }
         try:
-            url = serp_url
-            headers = {'User-Agent': 'LeadGeneratorApp/1.0'}
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            return data.get('local_results', [])[0]['links']['website']
+            search = GoogleSearch(params)
+            results = search.get_dict()
+            return results
         except Exception as e:
-            raise ValueError(f"Error fetching missing website data: {e}")
-        
+            raise ValueError(f"Error fetching search results: {e}")
+
     
     def rank_items_by_completeness(self, data):
         def completeness_score(item):
@@ -299,6 +308,7 @@ class GenerateLeadsService:
 
         # Sort by completeness score in descending order
         data.sort(key=completeness_score, reverse=True)
+        return data
 
     async def run(self) -> str:
         try:
@@ -306,7 +316,7 @@ class GenerateLeadsService:
             filtered_data = []
             if existing_results == None:
                 self.data = await self.get_data()
-                filtered_data = self.filter_data(self.data)
+                filtered_data = await self.filter_data(self.data)
                 urls = [item.get('website') for item in filtered_data if item.get('website')]
 
                 # Scrape all URLs at once
