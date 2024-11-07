@@ -6,18 +6,60 @@ import requests
 from serpapi import GoogleSearch
 from typing import List, Dict, Tuple
 from playwright.async_api import async_playwright, Browser
+from fastapi.security import OAuth2PasswordBearer
+from fastapi import Request
 import os
-import aiomysql
-from datetime import datetime
+import asyncpg
+from asyncpg import create_pool
+from datetime import datetime, timedelta
+from typing import Optional
 import config
 from urllib.parse import urlparse, parse_qs
 from scraper import Scraper
 import logging
+from models import User
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+import os
+from dotenv import load_dotenv
 
+
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+class OAuth2PasswordBearerCookie(OAuth2PasswordBearer):
+    def __init__(self, tokenUrl: str, cookie_name: str = "access_token"):
+        super().__init__(tokenUrl=tokenUrl)
+        self.cookie_name = cookie_name
+
+    async def __call__(self, request: Request):
+        token = request.cookies.get(self.cookie_name)
+        if not token:
+            return await super().__call__(request)
+        return token
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
 class ScraperService:
     def __init__(self, urls: List[str]):
@@ -35,14 +77,17 @@ class ScraperService:
     
     async def run(self):
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False)
-            context = await browser.new_context()
-            tasks = [self.scrape_url(url, context) for url in self.urls]
-            results = await asyncio.gather(*tasks)
+            try:
+                browser = await p.chromium.launch(headless=True)
+                context = await browser.new_context()
+                tasks = [self.scrape_url(url, context) for url in self.urls]
+                results = await asyncio.gather(*tasks)
+            except Exception as e:
+                traceback.print_exc()
+                raise ValueError(f"Error scraping websites: {e}")
             await context.close()
             await browser.close()
             return results
-
 
 class GenerateLeadsService:
     def __init__(self, location: str, industry: str, min_results: int):
@@ -51,7 +96,30 @@ class GenerateLeadsService:
         self.min_results = min_results
         self.data = []
         self.existing_data = []
+        self.db_pool = None
+        
+    
+    async def init_db_pool(self):
+        """Initialize the database connection pool."""
+        self.db_pool = await create_pool(
+            host=os.getenv('DB_HOST'),
+            port=int(os.getenv('DB_PORT')),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            database=os.getenv('DB_NAME')
+        )
 
+    async def close_db_pool(self):
+        """Close the database connection pool."""
+        if self.db_pool:
+            await self.db_pool.close()
+            logger.info("Database connection pool closed.")
+
+    async def fetch_all_results(self) -> List[Dict]:
+        query = "SELECT * FROM results;"
+        records = await self.db_pool.fetch(query)
+        return [dict(record) for record in records]
+    
     async def get_search_results_from_serp(self, page: int) -> Dict:
         params = {
             "api_key": config.SERP_API_KEY,
@@ -204,55 +272,48 @@ class GenerateLeadsService:
 
     async def save_results_to_db(self, data: List[Dict]):
         try:
-            conn = await aiomysql.connect(
-                host=os.getenv('DB_HOST'),
-                port=int(os.getenv('DB_PORT')),
-                user=os.getenv('DB_USER'),
-                password=os.getenv('DB_PASSWORD'),
-                db=os.getenv('DB_NAME')
-            )
-            async with conn.cursor() as cur:
-                for item in data:
-                    try:
-                        await cur.execute("""
-                            INSERT INTO results (
-                                location, industry, place_id, date_generated, name, address, city, state, country, tags, phone, email, website, lat, lng,
-                                phones_from_website, emails_from_website, facebook, instagram, linkedin, owner_email, owner_phone
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (
-                            self.location, self.industry, item['place_id'], datetime.now().strftime("%Y-%m-%d %H:%M:%S"), item['name'], item['address'], item['city'], item['state'], item['country'],
-                            item['tags'], item['phone'], item['email'], item['website'], item.get('lat', ''),
-                            item.get('lng', ''), item.get('phones_from_website', ''), item.get('emails_from_website', ''),
-                            item.get('facebook', ''), item.get('instagram', ''), item.get('linkedin', ''), '', ''
-                        ))
-                        logger.info(f"Inserted item {item['place_id']} into database")
-                    except Exception as e:
-                        logger.error(f"Error inserting item {item['place_id']} into database: {e}")
-                await conn.commit()
+            async with self.db_pool.acquire() as conn:
+                async with conn.transaction():
+                    for item in data:
+                        try:
+                            sql_command = """
+                                INSERT INTO results (
+                                    location, industry, place_id, date_generated, name, address, city, state, country, tags, phone, email, website, lat, lng,
+                                    phones_from_website, emails_from_website, facebook, instagram, linkedin, owner_email, owner_phone
+                                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                            """
+                            params = (
+                                str(self.location), str(self.industry), str(item['place_id']), datetime.now(),
+                                str(item.get('name', '')), str(item.get('address', '')), str(item.get('city', '')), str(item.get('state', '')), str(item.get('country', '')), str(item.get('tags', '')),
+                                str(item.get('phone', '')), str(item.get('email', '')), str(item.get('website', '')),
+                                str(item.get('lat', '')), str(item.get('lng', '')),  # Convert lat and lng to strings
+                                str(item.get('phones_from_website', '')), str(item.get('emails_from_website', '')),
+                                str(item.get('facebook', '')), str(item.get('instagram', '')), str(item.get('linkedin', '')), '', ''
+                            )
+
+                            await conn.execute(sql_command, *params)
+                            logger.info(f"Inserted item {item['place_id']} into database")
+                        except Exception as e:
+                            logger.error(f"Error inserting item {item['place_id']} into database: {e}. Item details: {item}")
         except Exception as e:
             logger.error(f"Error connecting to the database: {e}")
-        finally:
-            if conn:
-                conn.close()
 
     async def check_for_existing_results(self):
         try:
-            conn = await aiomysql.connect(
+            conn = await asyncpg.connect(
                 host=os.getenv('DB_HOST'),
                 port=int(os.getenv('DB_PORT')),
                 user=os.getenv('DB_USER'),
                 password=os.getenv('DB_PASSWORD'),
-                db=os.getenv('DB_NAME')
+                database=os.getenv('DB_NAME')
             )
-            async with conn.cursor(aiomysql.DictCursor) as cur:
-                await cur.execute("SELECT * FROM results WHERE location = %s AND industry = %s", (self.location, self.industry))
-                results = await cur.fetchall()
-                if results:
-                    conn.close()
-                    return results
-                else:
-                    conn.close()
-                    return None
+            query = "SELECT * FROM results WHERE location = $1 AND industry = $2"
+            results = await conn.fetch(query, self.location, self.industry)
+            await conn.close()
+            if results:
+                return results
+            else:
+                return None
         except Exception as e:
             logger.error(f"Error connecting to the database: {e}")
             return None
@@ -286,11 +347,11 @@ class GenerateLeadsService:
         try:
             search = GoogleSearch(params)
             results = search.get_dict()
-            return results
+            website = results.get('local_results', [])[0].get('links', {}).get('website', '')
+            return website if website else ''
         except Exception as e:
             raise ValueError(f"Error fetching search results: {e}")
 
-    
     def rank_items_by_completeness(self, data):
         def completeness_score(item):
             score = 0

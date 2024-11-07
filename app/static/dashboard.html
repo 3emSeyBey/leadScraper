@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap4.min.css">
+    <!-- Custom Styles -->
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Changed from center to flex-start */
+            background-color: #202020; /* Dark background */
+            /* overflow: hidden; */ /* Removed to allow scrolling */
+            position: relative;
+            padding: 20px 0; /* Added padding for spacing */
+        }
+        #particles-js {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 1; /* Behind the container */
+        }
+        .container {
+            color: #ffffff; /* Light text for contrast */
+            z-index: 10; /* Above particles */
+            max-width: 1200px; /* Increased for better table display */
+            width: 90%;
+            padding: 30px;
+            margin-bottom: 20px; /* Added margin for spacing */
+            background: rgba(31, 28, 59, 0.8); /* Semi-transparent dark background */
+            border-radius: 12px; /* Rounded corners */
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3); /* Enhanced shadow for depth */
+        }
+        h1 {
+            margin-bottom: 30px;
+            text-align: center;
+            color: #ffffff;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        table.dataTable thead th {
+            background-color: #343a40; /* Darker header background */
+            color: #ffffff;
+            font-size: 16px;
+            text-align: center;
+        }
+        table.dataTable tbody tr {
+            background-color: rgba(255, 255, 255, 0.05); /* Slightly lighter rows for readability */
+        }
+        table.dataTable tbody tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.1); /* Even rows slightly different */
+        }
+        table.dataTable tbody td {
+            color: #e0e0e0; /* Light text for table cells */
+            text-align: center;
+            vertical-align: middle;
+            max-width: 200px; /* Set a max-width for better appearance */
+            word-wrap: break-word;
+        }
+        /* Truncate long text to 2 lines and show tooltip */
+        .truncate-2-lines {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+        .dataTables_wrapper .dataTables_paginate .paginate_button {
+            color: #ffffff !important;
+            background: #343a40 !important;
+            border: none !important;
+            border-radius: 4px !important;
+            margin: 0 2px;
+        }
+        .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+            background: #495057 !important;
+            color: #ffffff !important;
+        }
+        .dataTables_wrapper .dataTables_filter input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #495057;
+            color: #ffffff;
+        }
+        .dataTables_wrapper .dataTables_length select {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #495057;
+            color: #ffffff;
+        }
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            table.dataTable thead th, table.dataTable tbody td {
+                font-size: 12px;
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="particles-js"></div> <!-- Particles.js container -->
+    <div class="container">
+        <h1>Results Dashboard</h1>
+        <div class="table-responsive">
+            <table class="table table-striped table-bordered" id="resultsTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Location</th>
+                        <th>Industry</th>
+                        <th>Place ID</th>
+                        <th>Date Generated</th>
+                        <th>Name</th>
+                        <th>Address</th>
+                        <th>City</th>
+                        <th>State</th>
+                        <th>Country</th>
+                        <th>Tags</th>
+                        <th>Phone</th>
+                        <th>Email</th>
+                        <th>Website</th>
+                        <th>Latitude</th>
+                        <th>Longitude</th>
+                        <th>Phones from Website</th>
+                        <th>Emails from Website</th>
+                        <th>Facebook</th>
+                        <th>Instagram</th>
+                        <th>LinkedIn</th>
+                        <th>Owner Email</th>
+                        <th>Owner Phone</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Data will be populated here via JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <form id="updateUserForm">
+        <h3>Update User</h3>
+        <div class="form-group">
+            <label for="newUsername">New Username</label>
+            <input type="text" class="form-control" id="newUsername" required>
+        </div>
+        <div class="form-group">
+            <label for="newPassword">New Password</label>
+            <input type="password" class="form-control" id="newPassword" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Update</button>
+    </form>
+    <button type="button" class="btn btn-danger mb-3" id="logoutButton">
+        <i class="fas fa-sign-out-alt"></i> Logout
+    </button>
+    <script>
+        document.getElementById('updateUserForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const newUsername = document.getElementById('newUsername').value.trim();
+            const newPassword = document.getElementById('newPassword').value;
+            try {
+                const response = await fetch(`/users/admin`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: JSON.stringify({ username: newUsername, password: newPassword })
+                });
+                if (response.ok) {
+                    alert('User updated successfully.');
+                } else {
+                    alert('Failed to update user.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+
+        document.getElementById('logoutButton').addEventListener('click', async function() {
+            try {
+                const response = await fetch('/logout', {
+                    method: 'POST',
+                    credentials: 'include'  // Include cookies in the request
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    window.location.href = '/';
+                } else {
+                    alert(result.detail || 'Failed to logout.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
+    </script>
+
+    <!-- jQuery, Popper.js, Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <!-- DataTables JS -->
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap4.min.js"></script>
+    <!-- Particles.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/particles.js/2.0.0/particles.min.js"></script>
+    <!-- Font Awesome -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/js/all.min.js"></script>
+    <!-- Bootstrap Tooltip -->
+    <script>
+        $(function () {
+            $('[data-toggle="tooltip"]').tooltip()
+        })
+    </script>
+    <!-- Custom Script -->
+    <script>
+        // Initialize particles.js
+        particlesJS("particles-js", {
+            particles: {
+                number: {
+                    value: 80,
+                    density: {
+                        enable: true,
+                        value_area: 800
+                    }
+                },
+                color: {
+                    value: "#ffffff"
+                },
+                shape: {
+                    type: "circle",
+                    stroke: {
+                        width: 0,
+                        color: "#000000"
+                    },
+                    polygon: {
+                        nb_sides: 5
+                    },
+                    image: {
+                        src: "img/github.svg",
+                        width: 100,
+                        height: 100
+                    }
+                },
+                opacity: {
+                    value: 0.5,
+                    random: true,
+                    anim: {
+                        enable: false,
+                        speed: 1,
+                        opacity_min: 0.1,
+                        sync: false
+                    }
+                },
+                size: {
+                    value: 3,
+                    random: true,
+                    anim: {
+                        enable: false,
+                        speed: 40,
+                        size_min: 0.1,
+                        sync: false
+                    }
+                },
+                line_linked: {
+                    enable: true,
+                    distance: 150,
+                    color: "#ffffff",
+                    opacity: 0.4,
+                    width: 1
+                },
+                move: {
+                    enable: true,
+                    speed: 2,
+                    direction: "none",
+                    random: false,
+                    straight: false,
+                    out_mode: "out",
+                    bounce: false,
+                    attract: {
+                        enable: false,
+                        rotateX: 600,
+                        rotateY: 1200
+                    }
+                }
+            },
+            interactivity: {
+                detect_on: "canvas",
+                events: {
+                    onhover: {
+                        enable: true,
+                        mode: "repulse"
+                    },
+                    onclick: {
+                        enable: true,
+                        mode: "push"
+                    },
+                    resize: true
+                },
+                modes: {
+                    grab: {
+                        distance: 400,
+                        line_linked: {
+                            opacity: 1
+                        }
+                    },
+                    bubble: {
+                        distance: 400,
+                        size: 40,
+                        duration: 2,
+                        opacity: 8,
+                        speed: 3
+                    },
+                    repulse: {
+                        distance: 100,
+                        duration: 0.4
+                    },
+                    push: {
+                        particles_nb: 4
+                    },
+                    remove: {
+                        particles_nb: 2
+                    }
+                }
+            },
+            retina_detect: true
+        });
+
+        $(document).ready(function() {
+            // Initialize DataTable
+            var table = $('#resultsTable').DataTable({
+                "paging": true,
+                "lengthChange": true,
+                "pageLength": 10,
+                "searching": true,
+                "ordering": true,
+                "order": [], // Default no specific order
+                "info": true,
+                "autoWidth": false,
+                "responsive": true,
+                "columnDefs": [
+                    { "orderable": true, "targets": "_all" }
+                ],
+                "language": {
+                    "search": "Filter records:",
+                    "paginate": {
+                        "previous": "<i class='fas fa-chevron-left'></i>",
+                        "next": "<i class='fas fa-chevron-right'></i>"
+                    }
+                }
+            });
+
+            // Fetch and populate data
+            fetch('/results-data/')
+                .then(response => response.json())
+                .then(data => {
+                    data.forEach(item => {
+                        var row = [];
+                        for (var key in item) {
+                            if (item.hasOwnProperty(key)) {
+                                // Format datetime if necessary
+                                if (key.toLowerCase().includes('date') && typeof item[key] === 'string') {
+                                    var date = new Date(item[key]);
+                                    row.push(isNaN(date.getTime()) ? item[key] : date.toLocaleString());
+                                } else {
+                                    row.push(item[key] !== null ? item[key] : '');
+                                }
+                            }
+                        }
+                        // Wrap long text fields with tooltip
+                        var formattedRow = row.map(function(cell) {
+                            if (cell.length > 50) { // Adjust the character limit as needed
+                                return '<span class="truncate-2-lines" data-toggle="tooltip" title="' + cell + '">' + cell + '</span>';
+                            } else {
+                                return cell;
+                            }
+                        });
+                        table.row.add(formattedRow).draw(false);
+                    });
+                    // Initialize tooltips after adding all rows
+                    $('[data-toggle="tooltip"]').tooltip();
+                })
+                .catch(error => console.error('Error fetching results:', error));
+        });
+    </script>
+</body>
+</html>

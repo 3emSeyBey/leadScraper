@@ -7,14 +7,26 @@
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
     <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
         body {
-            background-color: #f8f9fa;
-            overflow: hidden; /* Prevents scrollbars */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #202020; /* Dark background */
+            overflow: hidden;
+            position: relative;
         }
         .container {
-            margin-top: 50px;
-            position: relative;
-            z-index: 10; /* Ensures form is above particles */
+            color: #ffffff; /* Light text for contrast */
+            z-index: 10; /* Above particles */
+            max-width: 500px; /* Optional: Set a max-width for better appearance */
+            width: 100%;
+            padding: 20px;
+            background: rgba(31, 28, 59, 0.5); /* Optional: Add a semi-transparent background */
+            border-radius: 8px; /* Optional: Round the corners */
         }
         .loading-spinner {
             display: none;
@@ -34,13 +46,44 @@
             left: 0;
             z-index: 1; /* Behind the form */
         }
+        /* Additional Styles for View Dashboard Button */
+        .btn-dashboard {
+            background-color: #17a2b8; /* Bootstrap's info color */
+            border-color: #17a2b8;
+            color: #ffffff;
+        }
+        .btn-dashboard:hover {
+            background-color: #138496;
+            border-color: #117a8b;
+            color: #ffffff;
+        }
+        /* Styles for Login and Lead Generation Forms */
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div id="particles-js"></div> <!-- Particles.js container -->
     <div class="container">
-        <h1 class="text-center">Lead Generation</h1>
-        <form id="leadForm">
+        <!-- Login Form -->
+        <form id="loginForm">
+            <h2 class="text-center mb-4">Login</h2>
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" class="form-control" id="username" required autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" class="form-control" id="password" required>
+            </div>
+            <button type="submit" class="btn btn-success btn-block">Login</button>
+            <div id="loginError" class="text-danger mt-2 hidden">Invalid username or password.</div>
+        </form>
+
+        <!-- Lead Generation Form -->
+        <form id="leadForm" class="hidden">
+            <h1 class="text-center">Lead Generation</h1>
             <div class="form-group position-relative">
                 <label for="location">Location</label>
                 <input type="text" class="form-control" id="location" autocomplete="off">
@@ -55,36 +98,83 @@
                 <input type="number" class="form-control" id="minResults" value="50" required>
             </div>
             <button type="submit" class="btn btn-primary btn-block">Generate Leads</button>
+            <a href="/dashboard" class="btn btn-dashboard btn-block mt-2">
+                <i class="fas fa-tachometer-alt mr-2"></i>View Dashboard
+            </a> <!-- Added View Dashboard Button -->
+
+            <button type="button" class="btn btn-danger btn-block" id="logoutButton">Logout</button>
         </form>
         <div class="loading-spinner">
             <i class="fas fa-spinner fa-spin fa-3x"></i>
             <p>Generating leads, please wait...</p>
         </div>
     </div>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            try {
+                const response = await fetch('/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                        'username': username,
+                        'password': password
+                    })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('token', data.access_token);
+                    document.getElementById('loginForm').classList.add('hidden');
+                    document.getElementById('leadForm').classList.remove('hidden');
+                } else {
+                    document.getElementById('loginError').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
 
+        // Attach token to API requests
+        async function fetchWithAuth(url, options = {}) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                window.location.href = '/';
+            }
+            options.headers = {
+                ...options.headers,
+                'Authorization': `Bearer ${token}`
+            };
+            return fetch(url, options);
+        }
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/particles.js/2.0.0/particles.min.js"></script>
     <script>
         // Initialize particles.js
         particlesJS("particles-js", {
             particles: {
                 number: {
-                    value: 100,
+                    value: 150,
                     density: {
                         enable: true,
-                        value_area: 800
+                        value_area: 700
                     }
                 },
                 color: {
-                    value: "#ffffff"
+                    value: ["#00FF00", "#32CD32", "#ADFF2F"] // Multiple shades of green
                 },
                 shape: {
-                    type: "circle",
+                    type: ["circle", "triangle", "polygon"],
                     stroke: {
                         width: 0,
                         color: "#000000"
                     },
                     polygon: {
-                        nb_sides: 5
+                        nb_sides: 6
                     },
                     image: {
                         src: "img/github.svg",
@@ -93,35 +183,35 @@
                     }
                 },
                 opacity: {
-                    value: 0.5,
-                    random: false,
+                    value: 0.6,
+                    random: true,
                     anim: {
-                        enable: false,
+                        enable: true,
                         speed: 1,
-                        opacity_min: 0.1,
+                        opacity_min: 0.3,
                         sync: false
                     }
                 },
                 size: {
-                    value: 5,
+                    value: 4,
                     random: true,
                     anim: {
-                        enable: false,
-                        speed: 40,
-                        size_min: 0.1,
+                        enable: true,
+                        speed: 2,
+                        size_min: 2,
                         sync: false
                     }
                 },
                 line_linked: {
                     enable: true,
-                    distance: 150,
-                    color: "#ffffff",
-                    opacity: 0.4,
+                    distance: 120,
+                    color: "#00FF00",
+                    opacity: 0.3,
                     width: 1
                 },
                 move: {
                     enable: true,
-                    speed: 6,
+                    speed: 4,
                     direction: "none",
                     random: false,
                     straight: false,
@@ -139,11 +229,11 @@
                 events: {
                     onhover: {
                         enable: true,
-                        mode: "repulse"
+                        mode: "bubble"
                     },
                     onclick: {
                         enable: true,
-                        mode: "push"
+                        mode: "repulse"
                     },
                     resize: true
                 },
@@ -155,18 +245,18 @@
                         }
                     },
                     bubble: {
-                        distance: 400,
-                        size: 40,
+                        distance: 200,
+                        size: 8,
                         duration: 2,
-                        opacity: 8,
+                        opacity: 0.8,
                         speed: 3
                     },
                     repulse: {
-                        distance: 200,
+                        distance: 100,
                         duration: 0.4
                     },
                     push: {
-                        particles_nb: 4
+                        particles_nb: 2
                     },
                     remove: {
                         particles_nb: 2
@@ -177,7 +267,49 @@
         });
 
         let selectedLocationName = '';
+        
+        // Logout Functionality
+        document.getElementById('logoutButton').addEventListener('click', async function() {
+            try {
+                const response = await fetch('/logout', {
+                    method: 'POST',
+                    credentials: 'include'  // Include cookies in the request
+                });
+                if (response.ok) {
+                    // Hide lead form and show login form
+                    document.getElementById('leadForm').classList.add('hidden');
+                    document.getElementById('loginForm').classList.remove('hidden');
+                    document.getElementById('logoutButton').classList.add('hidden');
+                } else {
+                    alert('Failed to logout.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            }
+        });
 
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const response = await fetch('/dashboard/');
+                if (response.ok) {
+                    document.getElementById('loginForm').classList.add('hidden');
+                    document.getElementById('leadForm').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+
+        // Hide error message on input
+        document.getElementById('username').addEventListener('input', function() {
+            document.getElementById('loginError').classList.add('hidden');
+        });
+        document.getElementById('password').addEventListener('input', function() {
+            document.getElementById('loginError').classList.add('hidden');
+        });
+
+        // Location Autocomplete
         document.getElementById('location').addEventListener('input', async function(event) {
             const query = event.target.value;
             if (query.length < 3) {
@@ -209,6 +341,7 @@
             }
         });
 
+        // Lead Generation Form Submission
         document.getElementById('leadForm').addEventListener('submit', async function(event) {
             event.preventDefault();
             const location = document.getElementById('location').value;
