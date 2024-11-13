@@ -29,7 +29,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY")
+SECRET_KEY = "9a8b7c6d5e4f3g2h1i0j0k9l8m7n6o5p4q3r2s1t"
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 
